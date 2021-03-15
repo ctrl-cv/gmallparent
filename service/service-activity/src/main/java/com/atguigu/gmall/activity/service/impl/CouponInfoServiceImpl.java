@@ -10,6 +10,7 @@ import com.atguigu.gmall.model.activity.CouponInfo;
 import com.atguigu.gmall.model.activity.CouponRange;
 import com.atguigu.gmall.model.activity.CouponRuleVo;
 import com.atguigu.gmall.model.activity.CouponUse;
+import com.atguigu.gmall.model.cart.CartInfo;
 import com.atguigu.gmall.model.enums.CouponRangeType;
 import com.atguigu.gmall.model.enums.CouponStatus;
 import com.atguigu.gmall.model.enums.CouponType;
@@ -162,5 +163,17 @@ public class CouponInfoServiceImpl extends ServiceImpl<CouponInfoMapper, CouponI
     @Override
     public IPage<CouponInfo> selectPageByUserId(Page<CouponInfo> pageParam, long userId) {
         return couponInfoMapper.selectPageByUserId(pageParam, userId);
+    }
+
+    @Override
+    public Map<Long, List<CouponInfo>> findCartCouponInfo(List<CartInfo> cartInfoList, Map<Long, Long> skuIdToActivityIdMap, Long userId) {
+        ArrayList<SkuInfo> skuInfoList = new ArrayList<>();
+        for (CartInfo cartInfo : cartInfoList) {
+            SkuInfo skuInfo = productFeignClient.getSkuInfo(cartInfo.getSkuId());
+            skuInfoList.add(skuInfo);
+        }
+        List<CouponInfo> allCouponInfoList = couponInfoMapper.selectCartCouponInfoList(skuInfoList,userId);
+
+        return null;
     }
 }

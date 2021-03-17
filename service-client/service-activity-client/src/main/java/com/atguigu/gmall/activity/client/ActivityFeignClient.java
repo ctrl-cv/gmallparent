@@ -54,4 +54,14 @@ public interface ActivityFeignClient {
     @PostMapping("/api/activity/inner/findTradeActivityAndCoupon/{userId}")
     OrderTradeVo findTradeActivityAndCoupon(@RequestBody List<OrderDetail> orderDetailList, @PathVariable("userId") Long userId);
 
+    /**
+     * 更新优惠券使用状态
+     * @param couponId
+     * @param userId
+     * @param orderId
+     * @return
+     */
+    @GetMapping(value = "/api/activity/inner/updateCouponInfoUseStatus/{couponId}/{userId}/{orderId}")
+    Boolean updateCouponInfoUseStatus(@PathVariable("couponId") Long couponId, @PathVariable("userId") Long userId, @PathVariable("orderId") Long orderId);
+
 }

@@ -2,15 +2,16 @@ package com.atguigu.gmall.order.service.impl;
 
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
+import com.atguigu.gmall.activity.client.ActivityFeignClient;
 import com.atguigu.gmall.common.constant.MqConst;
 import com.atguigu.gmall.common.service.RabbitService;
 import com.atguigu.gmall.common.util.HttpClientUtil;
+import com.atguigu.gmall.model.activity.ActivityRule;
+import com.atguigu.gmall.model.activity.CouponInfo;
 import com.atguigu.gmall.model.enums.OrderStatus;
 import com.atguigu.gmall.model.enums.ProcessStatus;
-import com.atguigu.gmall.model.order.OrderDetail;
-import com.atguigu.gmall.model.order.OrderInfo;
-import com.atguigu.gmall.order.mapper.OrderDetailMapper;
-import com.atguigu.gmall.order.mapper.OrderInfoMapper;
+import com.atguigu.gmall.model.order.*;
+import com.atguigu.gmall.order.mapper.*;
 import com.atguigu.gmall.order.service.OrderService;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -22,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 
 import javax.annotation.Resource;
+import java.math.BigDecimal;
 import java.util.*;
 
 @Service
@@ -38,6 +40,18 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
     @Resource
     RabbitService rabbitService;
 
+    @Resource
+    OrderDetailActivityMapper orderDetailActivityMapper;
+
+    @Resource
+    OrderDetailCouponMapper orderDetailCouponMapper;
+
+    @Resource
+    OrderStatusLogMapper orderStatusLogMapper;
+
+    @Resource
+    ActivityFeignClient activityFeignClient;
+
 
     @Value("${ware.url}")
     String WARE_URL;
@@ -46,7 +60,12 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
     @Transactional(rollbackFor = Exception.class)
     public Long saveOrderInfo(OrderInfo orderInfo) {
         orderInfo.sumTotalAmount();
+        orderInfo.setFeightFee(new BigDecimal(0));
         orderInfo.setCreateTime(new Date());
+        orderInfo.setOperateTime(orderInfo.getCreateTime());
+        //促销优惠总金额
+        BigDecimal activityReduceAmount = orderInfo.getActivityReduceAmount(orderInfo);
+        orderInfo.setActivityReduceAmount(activityReduceAmount);
         Calendar calendar = Calendar.getInstance();
         calendar.add(Calendar.DATE,1);
         orderInfo.setExpireTime(calendar.getTime());
@@ -55,6 +74,8 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
         orderInfo.setTradeBody("过年了，买点年货！");
         orderInfo.setOrderStatus(OrderStatus.UNPAID.name());
         orderInfoMapper.insert(orderInfo);
+        // 计算购物项分摊的优惠减少金额，按比例分摊，退款时按实际支付金额退款
+
         List<OrderDetail> orderDetailList = orderInfo.getOrderDetailList();
         if (!CollectionUtils.isEmpty(orderDetailList)) {
             for (OrderDetail orderDetail : orderDetailList) {
@@ -63,6 +84,58 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
             }
         }
         return orderInfo.getId();
+    }
+
+
+    /**
+     * 记录订单与促销活动和优惠券的关联信息
+     * @param orderInfo
+     * @param skuIdToOrderDetailIdMap
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void saveActivityAndCouponRecord(OrderInfo orderInfo, Map<Long, Long> skuIdToOrderDetailIdMap) {
+        //记录促销活动
+        List<OrderDetailVo> orderDetailVoList = orderInfo.getOrderDetailVoList();
+        if(!CollectionUtils.isEmpty(orderDetailVoList)) {
+            for(OrderDetailVo orderDetailVo : orderDetailVoList) {
+                ActivityRule activityRule = orderDetailVo.getActivityRule();
+                if(null != activityRule) {
+                    for(Long skuId : activityRule.getSkuIdList()) {
+                        OrderDetailActivity orderDetailActivity = new OrderDetailActivity();
+                        orderDetailActivity.setOrderId(orderInfo.getId());
+                        orderDetailActivity.setOrderDetailId(skuIdToOrderDetailIdMap.get(skuId));
+                        orderDetailActivity.setActivityId(activityRule.getActivityId());
+                        orderDetailActivity.setActivityRule(activityRule.getId());
+                        orderDetailActivity.setSkuId(skuId);
+                        orderDetailActivity.setCreateTime(new Date());
+                        orderDetailActivityMapper.insert(orderDetailActivity);
+                    }
+                }
+            }
+        }
+
+        // 记录优惠券
+        // 是否更新优惠券状态
+        Boolean isUpdateCouponStatus = false;
+        CouponInfo couponInfo = orderInfo.getCouponInfo();
+        if (couponInfo != null){
+            List<Long> skuIdList = couponInfo.getSkuIdList();
+            for (Long skuId : skuIdList) {
+                OrderDetailCoupon orderDetailCoupon = new OrderDetailCoupon();
+                orderDetailCoupon.setOrderId(orderInfo.getId());
+                orderDetailCoupon.setOrderDetailId(skuIdToOrderDetailIdMap.get(skuId));
+                orderDetailCoupon.setCouponId(couponInfo.getId());
+                orderDetailCoupon.setSkuId(skuId);
+                orderDetailCoupon.setCreateTime(new Date());
+                orderDetailCouponMapper.insert(orderDetailCoupon);
+
+                // 更新优惠券使用状态
+                if (!isUpdateCouponStatus){
+                    activityFeignClient.updateCouponInfoUseStatus(couponInfo.getId(),orderInfo.getUserId(),orderInfo.getId());
+                }
+                isUpdateCouponStatus = true;
+            }
+        }
     }
 
     @Override
@@ -200,30 +273,92 @@ public class OrderServiceImpl extends ServiceImpl<OrderInfoMapper, OrderInfo> im
                 String wareId = (String) map.get("wareId");
                 List<String> skuIds = (List<String>) map.get("skuIds");
                 OrderInfo subOrderInfo = new OrderInfo();
+                // 属性拷贝
                 BeanUtils.copyProperties(orderInfoOrigin,subOrderInfo);
+                // 防止主键冲突
                 subOrderInfo.setId(null);
+
                 subOrderInfo.setParentOrderId(Long.parseLong(orderId));
+                // 赋值仓库Id
                 subOrderInfo.setWareId(wareId);
 
-                List<OrderDetail> orderDetails = new ArrayList<>();
+                // 子订单号
+                String outTradeNo = "ATGUIGU" + System.currentTimeMillis() + "" + new Random().nextInt(1000);
+                subOrderInfo.setOutTradeNo(outTradeNo);
+
+                // 计算子订单的金额: 必须有订单明细
+                // 获取到子订单明细
+                // 声明一个集合来存储子订单明细
+                List<OrderDetail> subOrderDetailList = new ArrayList<>();
+                // 表示主主订单明细中获取到子订单的明细
                 List<OrderDetail> orderDetailList = orderInfoOrigin.getOrderDetailList();
+
                 if (!CollectionUtils.isEmpty(orderDetailList)){
                     for (OrderDetail orderDetail : orderDetailList) {
                         for (String skuId : skuIds) {
                             if (Long.parseLong(skuId) == orderDetail.getSkuId().longValue()){
-                                orderDetails.add(orderDetail);
+                                OrderDetail subOrderDetail = new OrderDetail();
+                                BeanUtils.copyProperties(orderDetail,subOrderDetail);
+                                subOrderDetail.setId(null);
+                                // 将订单明细添加到集合
+                                subOrderDetailList.add(subOrderDetail);
                             }
                         }
                     }
                 }
-                orderInfoOrigin.setOrderDetailList(orderDetails);
-                subOrderInfo.sumTotalAmount();
-                this.saveOrderInfo(subOrderInfo);
+                subOrderInfo.setOrderDetailList(subOrderDetailList);
+                // 重新计算子订单和订单明细金额
+                BigDecimal totalAmount = new BigDecimal("0");
+                BigDecimal originalTotalAmount = new BigDecimal("0");
+                BigDecimal couponAmount = new BigDecimal("0");
+                BigDecimal activityReduceAmount = new BigDecimal("0");
+                for (OrderDetail subOrderDetail : subOrderDetailList) {
+                    BigDecimal skuTotalAmount = subOrderDetail.getOrderPrice().multiply(new BigDecimal(subOrderDetail.getSkuNum()));
+                   originalTotalAmount = originalTotalAmount.add(skuTotalAmount);
+                    totalAmount = totalAmount.add(skuTotalAmount).subtract(subOrderDetail.getSplitCouponAmount()).subtract(subOrderDetail.getSplitActivityAmount());
+                    couponAmount = couponAmount.add(subOrderDetail.getSplitCouponAmount());
+                    activityReduceAmount = activityReduceAmount.add(subOrderDetail.getSplitActivityAmount());
+                }
+
+               // subOrderInfo.sumTotalAmount();
+                subOrderInfo.setOriginalTotalAmount(originalTotalAmount);
+                subOrderInfo.setCouponAmount(couponAmount);
+                subOrderInfo.setActivityReduceAmount(activityReduceAmount);
+                subOrderInfo.setFeightFee(new BigDecimal(0));
+                orderInfoMapper.insert(subOrderInfo);
+//                this.saveOrderInfo(subOrderInfo);
+//                orderInfoArrayList.add(subOrderInfo);
+                //保存子订单明细
+                for (OrderDetail subOrderDetail : subOrderDetailList) {
+                    subOrderDetail.setOrderId(subOrderInfo.getId());
+                    orderDetailMapper.insert(subOrderDetail);
+                }
+
+               // 保存订单状态记录
+                List<OrderStatusLog> orderStatusLogList = orderStatusLogMapper.selectList(new QueryWrapper<OrderStatusLog>().eq("order_id", orderId));
+                for (OrderStatusLog orderStatusLog : orderStatusLogList) {
+                    OrderStatusLog subOrderStatusLog  = new OrderStatusLog();
+                    BeanUtils.copyProperties(orderStatusLog, subOrderStatusLog);
+                    subOrderStatusLog.setId(null);
+                    subOrderStatusLog.setOrderId(subOrderInfo.getId());
+                    orderStatusLogMapper.insert(subOrderStatusLog);
+                }
+                // 将子订单添加到集合中！
                 orderInfoArrayList.add(subOrderInfo);
             }
         }
-        this.updateOrderStatus(Long.parseLong(orderId),ProcessStatus.PAID);
+        this.updateOrderStatus(Long.parseLong(orderId),ProcessStatus.SPLIT);
         return orderInfoArrayList;
+    }
+
+    @Override
+    public void saveOrderStatusLog(Long orderId, String orderStatus) {
+        // 记录订单状态
+        OrderStatusLog orderStatusLog = new OrderStatusLog();
+        orderStatusLog.setOperateTime(new Date());
+        orderStatusLog.setOrderId(orderId);
+        orderStatusLog.setOrderStatus(orderStatus);
+        orderStatusLogMapper.insert(orderStatusLog);
     }
 
 }

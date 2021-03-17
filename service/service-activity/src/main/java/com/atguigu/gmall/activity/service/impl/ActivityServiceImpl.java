@@ -1,16 +1,22 @@
 package com.atguigu.gmall.activity.service.impl;
 
+import com.atguigu.gmall.activity.mapper.CouponUseMapper;
 import com.atguigu.gmall.activity.service.ActivityInfoService;
 import com.atguigu.gmall.activity.service.ActivityService;
 import com.atguigu.gmall.activity.service.CouponInfoService;
 import com.atguigu.gmall.model.activity.ActivityRule;
 import com.atguigu.gmall.model.activity.CouponInfo;
+import com.atguigu.gmall.model.activity.CouponUse;
 import com.atguigu.gmall.model.cart.CarInfoVo;
 import com.atguigu.gmall.model.cart.CartInfo;
 
+import com.atguigu.gmall.model.enums.CouponStatus;
+import com.atguigu.gmall.model.enums.CouponType;
 import com.atguigu.gmall.model.order.OrderDetail;
+import com.atguigu.gmall.model.order.OrderDetailCoupon;
 import com.atguigu.gmall.model.order.OrderDetailVo;
 import com.atguigu.gmall.model.order.OrderTradeVo;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.redisson.misc.Hash;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -26,6 +32,9 @@ public class ActivityServiceImpl implements ActivityService {
 
     @Resource
     CouponInfoService couponInfoService;
+
+    @Resource
+    CouponUseMapper couponUseMapper;
 
 
     /**
@@ -146,5 +155,19 @@ public class ActivityServiceImpl implements ActivityService {
         orderTradeVo.setCouponInfoList(couponInfoList);
         orderTradeVo.setActivityReduceAmount(activityReduceAmount);
         return orderTradeVo;
+    }
+
+    @Override
+    public void updateCouponInfoUseStatus(Long userId, Long orderId, Long couponId) {
+        CouponUse couponUse = new CouponUse();
+        couponUse.setOrderId(orderId);
+        couponUse.setCouponStatus(CouponStatus.USE_RUN.name());
+        couponUse.setUsingTime(new Date());
+
+        QueryWrapper<CouponUse> couponUseQueryWrapper = new QueryWrapper<>();
+        couponUseQueryWrapper.eq("coupon_id",couponId).eq("user_id",userId);
+        couponUseMapper.update(couponUse,couponUseQueryWrapper);
+
+
     }
 }

@@ -16,4 +16,12 @@ public interface ActivityService {
     List<CarInfoVo> findCartActivityAndCoupon(List<CartInfo> cartInfoList, Long userId);
 
     OrderTradeVo findTradeActivityAndCoupon(List<OrderDetail> orderDetailList, Long userId);
+
+    /**
+     * 更新优惠券使用状态
+     * @param couponId
+     * @param userId
+     * @param orderId
+     */
+    void updateCouponInfoUseStatus(Long userId, Long orderId, Long couponId);
 }

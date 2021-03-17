@@ -1,6 +1,7 @@
 package com.atguigu.gmall.order.controller;
 
 import com.alibaba.fastjson.JSON;
+import com.atguigu.gmall.activity.client.ActivityFeignClient;
 import com.atguigu.gmall.cart.client.CartFeignClient;
 import com.atguigu.gmall.common.constant.MqConst;
 import com.atguigu.gmall.common.result.Result;
@@ -8,7 +9,9 @@ import com.atguigu.gmall.common.service.RabbitService;
 import com.atguigu.gmall.common.util.AuthContextHolder;
 import com.atguigu.gmall.model.cart.CartInfo;
 import com.atguigu.gmall.model.order.OrderDetail;
+import com.atguigu.gmall.model.order.OrderDetailVo;
 import com.atguigu.gmall.model.order.OrderInfo;
+import com.atguigu.gmall.model.order.OrderTradeVo;
 import com.atguigu.gmall.model.user.UserAddress;
 import com.atguigu.gmall.order.service.OrderService;
 import com.atguigu.gmall.product.client.ProductFeignClient;
@@ -47,6 +50,9 @@ public class OrderApiController {
     @Resource
     RabbitService rabbitService;
 
+    @Resource
+    ActivityFeignClient activityFeignClient;
+
     /**
      * 确认订单
      * @param request
@@ -59,7 +65,13 @@ public class OrderApiController {
 
         List<UserAddress> userAddressList = userFeignClient.findUserAddressListByUserId(userId);
 
-        ArrayList<OrderDetail> detailArrayList = new ArrayList<>();
+        List<OrderDetail> detailArrayList = new ArrayList<>();
+
+        //获取商品活动和优惠
+        OrderTradeVo orderTradeVo = activityFeignClient.findTradeActivityAndCoupon(detailArrayList, Long.parseLong(userId));
+        BigDecimal activityReduceAmount = new BigDecimal(0);
+        List<OrderDetailVo> orderDetailVoList = orderTradeVo.getOrderDetailVoList();
+        activityReduceAmount = orderTradeVo.getActivityReduceAmount();
 
         for (CartInfo cartInfo : cartInfoList) {
             OrderDetail orderDetail = new OrderDetail();
@@ -69,15 +81,21 @@ public class OrderApiController {
             orderDetail.setSkuNum(cartInfo.getSkuNum());
             orderDetail.setOrderPrice(cartInfo.getSkuPrice());
             orderDetail.setCreateTime(new Date());
+
             detailArrayList.add(orderDetail);
         }
         OrderInfo orderInfo = new OrderInfo();
         orderInfo.setOrderDetailList(detailArrayList);
         orderInfo.sumTotalAmount();
+        orderInfo.setActivityReduceAmount(activityReduceAmount);
 
         Map<String, Object> result  = new HashMap<>();
         result.put("userAddressList", userAddressList);
         result.put("detailArrayList", detailArrayList);
+        result.put("activityReduceAmount",activityReduceAmount);
+        result.put("originalTotalAmount",orderInfo.getOriginalTotalAmount());
+        result.put("orderDetailVoList",orderDetailVoList);
+        result.put("couponInfoList",orderTradeVo.getCouponInfoList());
 
         // 保存总金额
         result.put("totalNum", detailArrayList.size());

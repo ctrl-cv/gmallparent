@@ -67,4 +67,11 @@ public class ActivityApiController {
     public OrderTradeVo findTradeActivityAndCoupon(@PathVariable Long userId, @RequestBody List<OrderDetail> orderDetailList){
         return activityService.findTradeActivityAndCoupon(orderDetailList, userId);
     }
+
+    @ApiOperation(value = "更新优惠券使用状态")
+    @GetMapping("inner/updateCouponInfoUseStatus/{couponId}/{userId}/{orderId}")
+    public Boolean updateCouponInfoUseStatus(@PathVariable Long userId,@PathVariable Long orderId,@PathVariable Long couponId){
+        activityService.updateCouponInfoUseStatus(userId,orderId,couponId);
+        return true;
+    }
 }

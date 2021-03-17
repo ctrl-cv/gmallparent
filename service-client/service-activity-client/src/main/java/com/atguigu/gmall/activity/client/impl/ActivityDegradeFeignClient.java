@@ -54,4 +54,9 @@ public class ActivityDegradeFeignClient implements ActivityFeignClient {
         orderTradeVo.setOrderDetailVoList(orderDetailVoList);
         return orderTradeVo;
     }
+
+    @Override
+    public Boolean updateCouponInfoUseStatus(Long couponId, Long userId, Long orderId) {
+        return null;
+    }
 }

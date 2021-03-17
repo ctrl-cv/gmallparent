@@ -45,6 +45,7 @@ public class SeckillGoodsApiController {
     @Resource
     OrderFeignClient orderFeignClient;
 
+
     @GetMapping("/findAll")
     public Result findAll(){
         return Result.ok(seckillGoodsService.findAll());

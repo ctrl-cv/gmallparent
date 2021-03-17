@@ -5,17 +5,18 @@ import com.atguigu.gmall.activity.service.CouponInfoService;
 import com.atguigu.gmall.common.result.Result;
 import com.atguigu.gmall.common.util.AuthContextHolder;
 import com.atguigu.gmall.model.activity.CouponInfo;
+import com.atguigu.gmall.model.cart.CarInfoVo;
+import com.atguigu.gmall.model.cart.CartInfo;
+import com.atguigu.gmall.model.order.OrderDetail;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.util.List;
 import java.util.Map;
 
 @Api(tags = "促销与优惠券接口")
@@ -28,6 +29,7 @@ public class ActivityApiController {
 
     @Resource
     CouponInfoService couponInfoService;
+
 
     @ApiOperation(value = "根据skuId获取促销与优惠券信息")
     @GetMapping("findActivityAndCoupon/{skuId}")
@@ -53,5 +55,15 @@ public class ActivityApiController {
         Page<CouponInfo> pageParam = new Page<>(page,limit);
         return Result.ok(couponInfoService.selectPageByUserId(pageParam, Long.parseLong(userId)));
     }
+    @ApiOperation(value = "获取购物车满足条件的促销与优惠券信息")
+    @PostMapping("inner/findCartActivityAndCoupon/{userId}")
+    public List<CarInfoVo> findCartActivityAndCoupon(@PathVariable Long userId, @RequestBody List<CartInfo>  cartInfoList){
+        return activityService.findCartActivityAndCoupon(cartInfoList, userId);
+    }
 
+    @ApiOperation(value = "获取交易满足条件的促销与优惠券信息")
+    @PostMapping("inner/findTradeActivityAndCoupon/{userId}")
+    public Result findTradeActivityAndCoupon(@PathVariable Long userId, @RequestBody List<OrderDetail> orderDetailList){
+        return activityService.findTradeActivityAndCoupon(orderDetailList, userId);
+    }
 }

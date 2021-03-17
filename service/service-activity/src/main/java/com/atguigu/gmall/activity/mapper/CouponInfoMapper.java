@@ -21,4 +21,6 @@ public interface CouponInfoMapper extends BaseMapper<CouponInfo> {
     IPage<CouponInfo> selectPageByUserId(Page<CouponInfo> pageParam, @Param("userId") long userId);
 
     List<CouponInfo> selectCartCouponInfoList(@Param("skuInfoList") List<SkuInfo> skuInfoList, @Param("userId")Long userId);
+
+    List<CouponInfo> selectTradeCouponInfoList(@Param("skuInfoList")ArrayList<SkuInfo> skuInfoList, @Param("userId")Long userId);
 }

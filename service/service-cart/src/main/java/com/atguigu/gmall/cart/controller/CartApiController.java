@@ -1,5 +1,6 @@
 package com.atguigu.gmall.cart.controller;
 
+import com.atguigu.gmall.activity.client.ActivityFeignClient;
 import com.atguigu.gmall.cart.service.CartService;
 import com.atguigu.gmall.common.result.Result;
 import com.atguigu.gmall.common.util.AuthContextHolder;
@@ -9,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
+import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 
@@ -23,6 +25,9 @@ public class CartApiController {
     //  调用服务层方法
     @Autowired
     private CartService cartService;
+
+    @Resource
+    ActivityFeignClient activityFeignClient;
 
     //  制作映射路径
     @PostMapping("addToCart/{skuId}/{skuNum}")
@@ -57,7 +62,9 @@ public class CartApiController {
         //  返回数据
         //  内部直接赋值的 【cartInfoList】
         //  以后添加了优惠券：Result.ok(carInfoVo); carInfoVo.getCartInfoList();
-        return Result.ok(cartInfoList);
+        Long curentUserId = StringUtils.isEmpty(userId) ? null : Long.parseLong(userId);
+        List<CarInfoVo> carInfoVoList = activityFeignClient.findCartActivityAndCoupon(cartInfoList, curentUserId);
+        return Result.ok(carInfoVoList);
     }
 
     //  购物车选中状态变更

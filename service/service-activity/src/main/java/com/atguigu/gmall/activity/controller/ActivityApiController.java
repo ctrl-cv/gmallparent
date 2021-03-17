@@ -8,6 +8,7 @@ import com.atguigu.gmall.model.activity.CouponInfo;
 import com.atguigu.gmall.model.cart.CarInfoVo;
 import com.atguigu.gmall.model.cart.CartInfo;
 import com.atguigu.gmall.model.order.OrderDetail;
+import com.atguigu.gmall.model.order.OrderTradeVo;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
@@ -63,7 +64,7 @@ public class ActivityApiController {
 
     @ApiOperation(value = "获取交易满足条件的促销与优惠券信息")
     @PostMapping("inner/findTradeActivityAndCoupon/{userId}")
-    public Result findTradeActivityAndCoupon(@PathVariable Long userId, @RequestBody List<OrderDetail> orderDetailList){
+    public OrderTradeVo findTradeActivityAndCoupon(@PathVariable Long userId, @RequestBody List<OrderDetail> orderDetailList){
         return activityService.findTradeActivityAndCoupon(orderDetailList, userId);
     }
 }
